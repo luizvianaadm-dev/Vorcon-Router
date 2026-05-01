@@ -1,0 +1,116 @@
+import { AuthenticationCreds, AuthenticationState, initAuthCreds, SignalDataTypeMap, BufferJSON } from '@whiskeysockets/baileys';
+import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
+
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY! || process.env.SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+export const useSupabaseAuthState = async (
+    sessionId: string
+): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> => {
+    
+    const writeData = async (keyName: string, data: any) => {
+        try {
+            const strData = JSON.stringify(data, BufferJSON.replacer);
+            const value = JSON.parse(strData);
+            
+            const { error } = await supabase
+                .from('whatsapp_sessions')
+                .upsert(
+                    { session_id: sessionId, key_name: keyName, key_value: value },
+                    { onConflict: 'session_id, key_name' }
+                );
+                
+            if (error) {
+                console.error(`[Supabase Auth] Erro ao salvar ${keyName} na sessão ${sessionId}:`, error.message);
+            }
+        } catch (error) {
+            console.error(`[Supabase Auth] Erro ao serializar ${keyName}:`, error);
+        }
+    };
+
+    const readData = async (keyName: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('whatsapp_sessions')
+                .select('key_value')
+                .eq('session_id', sessionId)
+                .eq('key_name', keyName)
+                .single();
+
+            if (error || !data) return null;
+
+            const strData = JSON.stringify(data.key_value);
+            return JSON.parse(strData, BufferJSON.reviver);
+        } catch (error) {
+            console.error(`[Supabase Auth] Erro ao ler ${keyName}:`, error);
+            return null;
+        }
+    };
+
+    const removeData = async (keyName: string) => {
+        try {
+            await supabase
+                .from('whatsapp_sessions')
+                .delete()
+                .eq('session_id', sessionId)
+                .eq('key_name', keyName);
+        } catch (error) {
+            console.error(`[Supabase Auth] Erro ao remover ${keyName}:`, error);
+        }
+    };
+
+    let creds: AuthenticationCreds;
+    const credsData = await readData('creds');
+    if (credsData) {
+        creds = credsData as AuthenticationCreds;
+    } else {
+        creds = initAuthCreds();
+    }
+
+    const saveCreds = async () => {
+        await writeData('creds', creds);
+    };
+
+    const keys = {
+        get: async (type: keyof SignalDataTypeMap, ids: string[]) => {
+            const data: { [id: string]: any } = {};
+            await Promise.all(
+                ids.map(async (id) => {
+                    const keyName = `${type}-${id}`;
+                    let value = await readData(keyName);
+                    
+                    if (type === 'app-state-sync-key' && value) {
+                        // BufferJSON.reviver já cuida da desserialização
+                    }
+                    
+                    if (value) {
+                        data[id] = value;
+                    }
+                })
+            );
+            return data;
+        },
+        set: async (data: any) => {
+            const tasks: Promise<void>[] = [];
+            for (const category in data) {
+                for (const id in data[category]) {
+                    const value = data[category][id];
+                    const keyName = `${category}-${id}`;
+                    if (value) {
+                        tasks.push(writeData(keyName, value));
+                    } else {
+                        tasks.push(removeData(keyName));
+                    }
+                }
+            }
+            await Promise.all(tasks);
+        }
+    };
+
+    return {
+        state: { creds, keys },
+        saveCreds
+    };
+};

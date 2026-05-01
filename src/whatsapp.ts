@@ -1,10 +1,11 @@
-import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, WASocket, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import qrcode from 'qrcode-terminal';
 import { generateQuantumDelay, wait } from './quantum_fuzzing';
 import path from 'path';
 import 'dotenv/config';
+import { useSupabaseAuthState } from './supabaseAuthState';
 
 export interface InstanceInfo {
   instanceId: string;
@@ -33,8 +34,8 @@ export class WhatsAppInstance {
 
   async connect() {
     this.info.status = 'connecting';
-    const authDir = path.join('./sessions', this.info.clientId, this.info.instanceId);
-    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    const authSessionId = `${this.info.clientId}_${this.info.instanceId}`;
+    const { state, saveCreds } = await useSupabaseAuthState(authSessionId);
 
     let version: [number, number, number] | undefined;
     try {
