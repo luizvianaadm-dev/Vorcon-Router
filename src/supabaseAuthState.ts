@@ -24,9 +24,16 @@ export const useSupabaseAuthState = async (
                 
             if (error) {
                 console.error(`[Supabase Auth] Erro ao salvar ${keyName} na sessão ${sessionId}:`, error.message);
+                console.error(`[Supabase Auth] Detalhes do erro:`, JSON.stringify(error, null, 2));
+                if ('cause' in error) {
+                    console.error(`[Supabase Auth] Causa do erro:`, (error as any).cause);
+                }
             }
-        } catch (error) {
-            console.error(`[Supabase Auth] Erro ao serializar ${keyName}:`, error);
+        } catch (err: any) {
+            console.error(`[Supabase Auth] Exceção ao serializar/salvar ${keyName}:`, err);
+            if (err && err.cause) {
+                console.error(`[Supabase Auth] Causa da exceção:`, err.cause);
+            }
         }
     };
 
@@ -39,12 +46,16 @@ export const useSupabaseAuthState = async (
                 .eq('key_name', keyName)
                 .single();
 
-            if (error || !data) return null;
+            if (error) {
+                console.error(`[Supabase Auth] Erro ao ler ${keyName} na sessão ${sessionId}:`, error.message);
+                return null;
+            }
+            if (!data) return null;
 
             const strData = JSON.stringify(data.key_value);
             return JSON.parse(strData, BufferJSON.reviver);
-        } catch (error) {
-            console.error(`[Supabase Auth] Erro ao ler ${keyName}:`, error);
+        } catch (err: any) {
+            console.error(`[Supabase Auth] Exceção ao ler ${keyName}:`, err);
             return null;
         }
     };

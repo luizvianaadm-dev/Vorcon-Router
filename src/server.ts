@@ -1,9 +1,22 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import { instanceManager } from './instanceManager';
-import 'dotenv/config';
+import { asaasWebhookHandler } from './webhooks/asaas';
 
 const app = express();
 app.use(express.json());
+
+// Enable CORS for frontend integration
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+  if (req.method === 'OPTIONS') {
+     res.sendStatus(200);
+     return;
+  }
+  next();
+});
 
 // ============================================================
 // MIDDLEWARE DE AUTENTICAÇÃO (API Key no Header)
@@ -36,6 +49,11 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
   });
 });
+
+// ============================================================
+// WEBHOOKS (Sem autenticação X-API-KEY)
+// ============================================================
+app.post('/api/webhooks/asaas', asaasWebhookHandler);
 
 // ============================================================
 // ROTAS AUTENTICADAS

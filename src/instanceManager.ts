@@ -23,6 +23,7 @@ export interface ClientConfig {
   maxInstances: number;
   email?: string;
   billingActive: boolean;
+  webhookUrl?: string;
 }
 
 // ============================================================
@@ -38,6 +39,7 @@ const REGISTERED_CLIENTS: ClientConfig[] = [
     maxInstances: 999,
     email: 'luizviana.adm@gmail.com',
     billingActive: false, // Founder não paga
+    webhookUrl: 'https://www.aegisfamily.com/api/webhooks/whatsapp',
   },
   {
     clientId: 'vorcon_corp',
@@ -122,6 +124,11 @@ class InstanceManager {
   // Valida API Key e retorna o cliente
   authenticateClient(apiKey: string): ClientConfig | null {
     return REGISTERED_CLIENTS.find(c => c.apiKey === apiKey) || null;
+  }
+
+  // Retorna a configuração de um cliente por ID
+  getClientConfig(clientId: string): ClientConfig | null {
+    return REGISTERED_CLIENTS.find(c => c.clientId === clientId) || null;
   }
 
   private makeKey(clientId: string, instanceId: string): string {

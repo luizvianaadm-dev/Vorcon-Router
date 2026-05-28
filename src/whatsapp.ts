@@ -6,6 +6,7 @@ import { generateQuantumDelay, wait } from './quantum_fuzzing';
 import path from 'path';
 import 'dotenv/config';
 import { useSupabaseAuthState } from './supabaseAuthState';
+import axios from 'axios';
 
 export interface InstanceInfo {
   instanceId: string;
@@ -105,7 +106,55 @@ export class WhatsAppInstance {
 
     this.sock.ev.on('messages.upsert', async (m) => {
       this.info.lastActive = new Date();
-      // TODO: Webhook para o cliente
+      
+      if (m.type === 'notify') {
+        // Dynamic import to avoid circular dependency with instanceManager
+        const { instanceManager } = require('./instanceManager');
+
+        for (const msg of m.messages) {
+          // Only process incoming messages from third parties (ignore sent messages)
+          if (msg.key.fromMe) continue;
+
+          // Ignora mensagens sem conteúdo ou mensagens de controle/protocolo (como HISTORY_SYNC_NOTIFICATION, edits, deletes)
+          const messageContent = msg.message;
+          if (!messageContent) continue;
+
+          if (
+            messageContent.protocolMessage || 
+            messageContent.senderKeyDistributionMessage ||
+            (messageContent as any).peerDataOperationRequestMessage
+          ) {
+            console.log(`[Webhook] Ignorando mensagem de controle/protocolo (${Object.keys(messageContent).join(', ')}) na instância '${this.info.instanceId}'`);
+            continue;
+          }
+
+          // Find client config by clientId
+          const clientConfig = instanceManager.getClientConfig(this.info.clientId);
+          
+          if (clientConfig && clientConfig.webhookUrl) {
+            console.log(`[Webhook] Nova mensagem na instância '${this.info.instanceId}'. Roteando para ${clientConfig.webhookUrl}`);
+            
+            try {
+              await axios.post(clientConfig.webhookUrl, {
+                key: {
+                  remoteJid: msg.key.remoteJid
+                },
+                message: msg.message,
+                pushName: msg.pushName
+              }, {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': clientConfig.apiKey
+                },
+                timeout: 10000
+              });
+              console.log(`[Webhook] Sucesso ao enviar para ${clientConfig.webhookUrl}`);
+            } catch (error: any) {
+              console.error(`[Webhook Error] Falha ao enviar para ${clientConfig.webhookUrl}:`, error.message);
+            }
+          }
+        }
+      }
     });
   }
 
