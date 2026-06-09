@@ -4,6 +4,8 @@ import 'dotenv/config';
 
 const supabaseUrl = process.env.SUPABASE_URL!.replace(/\/$/, '');
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY! || process.env.SUPABASE_ANON_KEY!;
+console.log('[Supabase Init] Raw URL:', process.env.SUPABASE_URL);
+console.log('[Supabase Init] Sanitized URL:', supabaseUrl);
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const useSupabaseAuthState = async (
