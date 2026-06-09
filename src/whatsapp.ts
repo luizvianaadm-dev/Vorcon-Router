@@ -186,6 +186,22 @@ export class WhatsAppInstance {
     return result;
   }
 
+  async getGroups() {
+    if (this.info.status !== 'connected' || !this.sock) {
+      throw new Error(`Instance ${this.info.instanceId} is not connected.`);
+    }
+    const groups = await this.sock.groupFetchAllParticipating();
+    return Object.values(groups);
+  }
+
+  async getGroupParticipants(groupId: string) {
+    if (this.info.status !== 'connected' || !this.sock) {
+      throw new Error(`Instance ${this.info.instanceId} is not connected.`);
+    }
+    const metadata = await this.sock.groupMetadata(groupId);
+    return metadata.participants;
+  }
+
   getStatus() {
     return { ...this.info };
   }

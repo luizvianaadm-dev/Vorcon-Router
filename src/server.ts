@@ -121,6 +121,38 @@ app.delete('/api/instances/:instanceId', async (req: Request, res: Response) => 
   }
 });
 
+// --- GRUPOS ---
+
+// Listar grupos de uma instância
+app.get('/api/instances/:instanceId/groups', async (req: Request, res: Response) => {
+  try {
+    const clientId = (req as any).clientId;
+    const instance = instanceManager.getInstance(clientId, req.params.instanceId as string);
+    if (!instance) {
+      return res.status(404).json({ error: 'Instance not found.' });
+    }
+    const groups = await instance.getGroups();
+    res.json({ success: true, groups });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Participantes de um grupo
+app.get('/api/instances/:instanceId/groups/:groupId/participants', async (req: Request, res: Response) => {
+  try {
+    const clientId = (req as any).clientId;
+    const instance = instanceManager.getInstance(clientId, req.params.instanceId as string);
+    if (!instance) {
+      return res.status(404).json({ error: 'Instance not found.' });
+    }
+    const participants = await instance.getGroupParticipants(req.params.groupId as string);
+    res.json({ success: true, participants });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- MENSAGENS ---
 
 // Enviar mensagem de texto
