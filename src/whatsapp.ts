@@ -160,7 +160,11 @@ export class WhatsAppInstance {
 
   async disconnect() {
     if (this.sock) {
-      await this.sock.logout();
+      try {
+        await this.sock.logout();
+      } catch (err) {
+        console.warn(`[${this.info.instanceId}] Error logging out:`, err);
+      }
       this.sock = null;
       this.info.status = 'disconnected';
       this.info.qr = null;
