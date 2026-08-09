@@ -74,18 +74,26 @@ export class WhatsAppInstance {
 
       if (connection === 'close') {
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const errorMsg = lastDisconnect?.error?.message || '';
+        const isConflict = errorMsg.includes('conflict') || errorMsg.includes('Stream Errored (conflict)');
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !isConflict;
 
-        if (shouldReconnect) {
-          this.retryCount++;
-          const delay = Math.min(this.retryCount * 2000, 15000);
-          console.log(`[${this.info.instanceId}] Reconnecting in ${delay / 1000}s... (attempt ${this.retryCount})`);
-          await wait(delay);
-          this.connect();
-        } else {
+        if (isConflict) {
+          console.error(`🚫 [${this.info.instanceId}] CONFLITO DETECTADO: Outra sessão está usando este número. Parando reconexão.`);
           this.info.status = 'disconnected';
           this.info.qr = null;
-          console.log(`[${this.info.instanceId}] Logged out.`);
+          this.retryCount = 0;
+        } else if (shouldReconnect && this.retryCount < 5) {
+          this.retryCount++;
+          const delay = Math.min(this.retryCount * 2000, 15000);
+          console.log(`[${this.info.instanceId}] Reconnecting in ${delay / 1000}s... (attempt ${this.retryCount}/5)`);
+          await wait(delay);
+          this.connect();
+        } else if (this.retryCount >= 5) {
+          console.error(`🚫 [${this.info.instanceId}] Máximo de tentativas (5) atingido. Parando reconexão.`);
+          this.info.status = 'disconnected';
+          this.info.qr = null;
+          this.retryCount = 0;
         }
       } else if (connection === 'open') {
         console.log(`✅ [${this.info.instanceId}] CONNECTED!`);
@@ -112,10 +120,13 @@ export class WhatsAppInstance {
         const { instanceManager } = require('./instanceManager');
 
         for (const msg of m.messages) {
-          // Only process incoming messages from third parties (ignore sent messages)
-          if (msg.key.fromMe) continue;
+          // Ignora mensagens de GRUPOS — AURA só monitora conversas diretas (1-a-1)
+          const remoteJid = msg.key.remoteJid || '';
+          if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) {
+            continue;
+          }
 
-          // Ignora mensagens sem conteúdo ou mensagens de controle/protocolo (como HISTORY_SYNC_NOTIFICATION, edits, deletes)
+          // Ignora mensagens sem conteúdo ou mensagens de controle/protocolo
           const messageContent = msg.message;
           if (!messageContent) continue;
 
@@ -128,11 +139,15 @@ export class WhatsAppInstance {
             continue;
           }
 
+          // Determina se é mensagem do dono ou de terceiro
+          const isOwner = !!msg.key.fromMe;
+
           // Find client config by clientId
           const clientConfig = instanceManager.getClientConfig(this.info.clientId);
           
           if (clientConfig && clientConfig.webhookUrl) {
-            console.log(`[Webhook] Nova mensagem na instância '${this.info.instanceId}'. Roteando para ${clientConfig.webhookUrl}`);
+            const direction = isOwner ? '📤 Resposta do dono' : '📥 Nova mensagem';
+            console.log(`[Webhook] ${direction} na instância '${this.info.instanceId}'. Roteando para ${clientConfig.webhookUrl}`);
             
             try {
               await axios.post(clientConfig.webhookUrl, {
@@ -140,7 +155,8 @@ export class WhatsAppInstance {
                   remoteJid: msg.key.remoteJid
                 },
                 message: msg.message,
-                pushName: msg.pushName
+                pushName: msg.pushName,
+                fromMe: isOwner,  // Flag para AURA saber quem mandou
               }, {
                 headers: {
                   'Content-Type': 'application/json',
