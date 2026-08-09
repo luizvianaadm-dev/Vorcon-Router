@@ -165,19 +165,20 @@ app.post('/api/instances/:instanceId/pair', async (req: Request, res: Response) 
     }
 
     // Get or create instance
-    let instance = instanceManager.getInstance(clientId, req.params.instanceId as string);
+    let existingInstance = instanceManager.getInstance(clientId, req.params.instanceId as string);
     
-    if (!instance) {
+    if (!existingInstance) {
       // Create instance manually without calling connect()
       const { WhatsAppInstance } = require('./whatsapp');
-      instance = new WhatsAppInstance(req.params.instanceId as string, clientId);
+      existingInstance = new WhatsAppInstance(req.params.instanceId as string, clientId);
       // Register in manager via direct map access
-      (instanceManager as any).instances.set(`${clientId}::${req.params.instanceId}`, instance);
+      (instanceManager as any).instances.set(`${clientId}::${req.params.instanceId}`, existingInstance);
     }
 
+    const targetInstance = existingInstance!;
     console.log(`[API] 📱 Requesting pairing code for instance '${req.params.instanceId}' with phone: ${phoneNumber}`);
     
-    const code = await instance.connectWithPairingCode(phoneNumber);
+    const code = await targetInstance.connectWithPairingCode(phoneNumber);
     
     res.json({ 
       success: true, 
