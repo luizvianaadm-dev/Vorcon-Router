@@ -153,6 +153,50 @@ app.get('/api/instances/:instanceId/groups/:groupId/participants', async (req: R
   }
 });
 
+// --- PAIRING CODE (conectar sem QR) ---
+
+app.post('/api/instances/:instanceId/pair', async (req: Request, res: Response) => {
+  try {
+    const clientId = (req as any).clientId;
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'Missing phoneNumber. Send the full number with country code (e.g. 5571994030731).' });
+    }
+
+    // Get or create instance
+    let instance = instanceManager.getInstance(clientId, req.params.instanceId as string);
+    
+    if (!instance) {
+      // Create instance manually without calling connect()
+      const { WhatsAppInstance } = require('./whatsapp');
+      instance = new WhatsAppInstance(req.params.instanceId as string, clientId);
+      // Register in manager via direct map access
+      (instanceManager as any).instances.set(`${clientId}::${req.params.instanceId}`, instance);
+    }
+
+    console.log(`[API] 📱 Requesting pairing code for instance '${req.params.instanceId}' with phone: ${phoneNumber}`);
+    
+    const code = await instance.connectWithPairingCode(phoneNumber);
+    
+    res.json({ 
+      success: true, 
+      pairingCode: code,
+      message: `Código de pareamento: ${code}. Abra o WhatsApp → Dispositivos Conectados → Conectar Dispositivo → Inserir código.`,
+      instructions: [
+        '1. Abra o WhatsApp no celular com o chip da AURA',
+        '2. Vá em Configurações → Dispositivos Conectados',
+        '3. Toque em "Conectar Dispositivo"',
+        '4. Escolha "Conectar com número de telefone"',
+        `5. Digite o código: ${code}`,
+      ]
+    });
+  } catch (error: any) {
+    console.error('[API] Pairing error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- MENSAGENS ---
 
 // Enviar mensagem de texto

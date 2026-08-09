@@ -265,4 +265,134 @@ export class WhatsAppInstance {
   getStatus() {
     return { ...this.info };
   }
+
+  /**
+   * Request pairing code for phone number authentication (no QR needed).
+   * The phone will receive an 8-digit code via SMS/notification.
+   * User enters this code in WhatsApp on their phone to link.
+   */
+  async requestPairingCode(phoneNumber: string): Promise<string> {
+    if (!this.sock) {
+      throw new Error(`Instance ${this.info.instanceId} has no active socket. Call connect() first.`);
+    }
+
+    // Clean phone number — remove +, spaces, dashes
+    const cleanPhone = phoneNumber.replace(/[\+\s\-\(\)]/g, '');
+    
+    console.log(`[${this.info.instanceId}] 📱 Requesting pairing code for: ${cleanPhone}`);
+    
+    try {
+      const code = await this.sock.requestPairingCode(cleanPhone);
+      console.log(`[${this.info.instanceId}] ✅ Pairing code generated: ${code}`);
+      return code;
+    } catch (err: any) {
+      console.error(`[${this.info.instanceId}] ❌ Pairing code error:`, err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Connect using pairing code instead of QR code.
+   * Creates the socket and immediately requests a pairing code.
+   */
+  async connectWithPairingCode(phoneNumber: string): Promise<string> {
+    this.info.status = 'connecting';
+    const authSessionId = `${this.info.clientId}_${this.info.instanceId}`;
+    const { state, saveCreds } = await useSupabaseAuthState(authSessionId);
+
+    let version: [number, number, number] | undefined;
+    try {
+      const { version: v } = await fetchLatestBaileysVersion();
+      version = v;
+    } catch {
+      version = [2, 3000, 1037641644];
+    }
+
+    // Proxy
+    let agent: HttpsProxyAgent<string> | undefined;
+    if (process.env.USE_PROXY === 'true') {
+      const proxyUrl = `http://${process.env.PROXY_USER}:${process.env.PROXY_PASS}@${process.env.PROXY_HOST}:${process.env.PROXY_PORT}`;
+      agent = new HttpsProxyAgent(proxyUrl);
+    }
+
+    this.sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: false,
+      version,
+      browser: Browsers.windows('Chrome'),
+      agent,
+    });
+
+    this.sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect } = update;
+
+      if (connection === 'close') {
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const errorMsg = lastDisconnect?.error?.message || '';
+        const isConflict = errorMsg.includes('conflict');
+
+        if (isConflict) {
+          console.error(`🚫 [${this.info.instanceId}] CONFLITO na sessão de pairing.`);
+          this.info.status = 'disconnected';
+        } else if (statusCode !== DisconnectReason.loggedOut && this.retryCount < 3) {
+          this.retryCount++;
+          const delay = this.retryCount * 3000;
+          console.log(`[${this.info.instanceId}] Pairing reconnect in ${delay/1000}s...`);
+          await wait(delay);
+          this.connect();
+        }
+      } else if (connection === 'open') {
+        console.log(`✅ [${this.info.instanceId}] CONNECTED via Pairing Code!`);
+        this.info.status = 'connected';
+        this.info.qr = null;
+        this.info.lastActive = new Date();
+        this.retryCount = 0;
+
+        const user = this.sock?.user;
+        if (user) {
+          this.info.phone = user.id.split(':')[0].split('@')[0];
+        }
+      }
+    });
+
+    this.sock.ev.on('creds.update', saveCreds);
+
+    // Setup message handler (same as connect())
+    this.sock.ev.on('messages.upsert', async (m) => {
+      this.info.lastActive = new Date();
+      if (m.type === 'notify') {
+        const { instanceManager } = require('./instanceManager');
+        for (const msg of m.messages) {
+          const remoteJid = msg.key.remoteJid || '';
+          if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) continue;
+          const messageContent = msg.message;
+          if (!messageContent) continue;
+          if (messageContent.protocolMessage || messageContent.senderKeyDistributionMessage || (messageContent as any).peerDataOperationRequestMessage) continue;
+
+          const isOwner = !!msg.key.fromMe;
+          const clientConfig = instanceManager.getClientConfig(this.info.clientId);
+          if (clientConfig && clientConfig.webhookUrl) {
+            try {
+              await axios.post(clientConfig.webhookUrl, {
+                key: { remoteJid: msg.key.remoteJid },
+                message: msg.message,
+                pushName: msg.pushName,
+                fromMe: isOwner,
+              }, {
+                headers: { 'Content-Type': 'application/json', 'x-api-key': clientConfig.apiKey },
+                timeout: 10000,
+              });
+            } catch (error: any) {
+              console.error(`[Webhook Error] ${error.message}`);
+            }
+          }
+        }
+      }
+    });
+
+    // Wait a moment for socket to initialize, then request pairing code
+    await wait(3000);
+    const code = await this.requestPairingCode(phoneNumber);
+    return code;
+  }
 }
