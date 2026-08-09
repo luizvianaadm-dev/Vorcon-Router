@@ -149,6 +149,36 @@ export class WhatsAppInstance {
             const direction = isOwner ? '📤 Resposta do dono' : '📥 Nova mensagem';
             console.log(`[Webhook] ${direction} na instância '${this.info.instanceId}'. Roteando para ${clientConfig.webhookUrl}`);
             
+            // --- MEDIA DOWNLOAD: Detect and download documents/images for AI processing ---
+            let mediaBase64: string | null = null;
+            let mediaMimeType: string | null = null;
+            let mediaFileName: string | null = null;
+            let mediaSize: number = 0;
+
+            const docMsg = messageContent.documentMessage || messageContent.documentWithCaptionMessage?.message?.documentMessage;
+            const imgMsg = messageContent.imageMessage;
+
+            if (docMsg || imgMsg) {
+              try {
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                const mediaBuffer = await downloadMediaMessage(msg, 'buffer', {});
+                if (mediaBuffer && mediaBuffer.length > 0 && mediaBuffer.length < 20 * 1024 * 1024) {
+                  mediaBase64 = mediaBuffer.toString('base64');
+                  mediaSize = mediaBuffer.length;
+                  if (docMsg) {
+                    mediaMimeType = docMsg.mimetype || 'application/pdf';
+                    mediaFileName = docMsg.fileName || 'documento';
+                  } else if (imgMsg) {
+                    mediaMimeType = imgMsg.mimetype || 'image/jpeg';
+                    mediaFileName = 'image.' + (imgMsg.mimetype?.split('/')?.[1] || 'jpg');
+                  }
+                  console.log(`[Webhook] 📎 Media downloaded: ${mediaFileName} (${(mediaSize / 1024).toFixed(1)} KB, ${mediaMimeType})`);
+                }
+              } catch (dlErr: any) {
+                console.warn(`[Webhook] ⚠️ Failed to download media: ${dlErr.message}`);
+              }
+            }
+
             try {
               await axios.post(clientConfig.webhookUrl, {
                 key: {
@@ -157,12 +187,22 @@ export class WhatsAppInstance {
                 message: msg.message,
                 pushName: msg.pushName,
                 fromMe: isOwner,  // Flag para AURA saber quem mandou
+                // Media data for document/image processing
+                ...(mediaBase64 && {
+                  media: {
+                    base64: mediaBase64,
+                    mimeType: mediaMimeType,
+                    fileName: mediaFileName,
+                    fileSize: mediaSize,
+                  }
+                }),
               }, {
                 headers: {
                   'Content-Type': 'application/json',
                   'x-api-key': clientConfig.apiKey
                 },
-                timeout: 10000
+                timeout: 30000,  // 30s timeout for large docs
+                maxContentLength: 25 * 1024 * 1024,  // 25MB max
               });
               console.log(`[Webhook] Sucesso ao enviar para ${clientConfig.webhookUrl}`);
             } catch (error: any) {
