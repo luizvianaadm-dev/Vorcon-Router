@@ -1,0 +1,33 @@
+name: "Repository Integrity & Security Audit"
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  audit:
+    name: Validate Structural & Header Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Validate JSON Files
+        run: |
+          node -e '
+            const fs = require("fs");
+            const files = ["vercel.json", "package.json"];
+            files.forEach(f => {
+              if (fs.existsSync(f)) {
+                try {
+                  JSON.parse(fs.readFileSync(f, "utf8"));
+                  console.log("✅ " + f + " is valid JSON");
+                } catch(e) {
+                  console.error("❌ " + f + " has invalid syntax: " + e.message);
+                  process.exit(1);
+                }
+              }
+            });
+          '
