@@ -49,7 +49,7 @@ const REGISTERED_CLIENTS: ClientConfig[] = [
     maxInstances: 999,
     email: 'luizviana@vorcon.com.br',
     billingActive: false,
-    webhookUrl: process.env.AURA_WEBHOOK_URL || 'http://localhost:3001/api/webhooks/whatsapp',
+    webhookUrl: process.env.AURA_WEBHOOK_URL || 'https://aurasecretary.vorcon.com.br/api/webhooks/whatsapp',
   },
 
   // ---- AEGIS FAMILY (clientes do produto AEGIS) ----
