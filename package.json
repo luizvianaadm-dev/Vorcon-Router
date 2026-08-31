@@ -15,7 +15,7 @@
   "type": "commonjs",
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "axios": "^1.15.2",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
