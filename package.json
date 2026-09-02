@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^25.6.0",
+    "@types/node": "^26.4.0",
     "@types/qrcode-terminal": "^0.12.2",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
